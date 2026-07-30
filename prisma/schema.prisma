@@ -1,0 +1,227 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  customers   Customer[]
+  leads       Lead[]
+  deals       Deal[]
+  stages      PipelineStage[]
+  whatsapp    WhatsAppConnection?
+  subscription Subscription?
+  automationRules AutomationRule[]
+}
+
+enum PlanType {
+  BASIC
+  BUSINESS
+  PREMIUM
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  companyId            String    @unique
+  company              Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan                 PlanType  @default(BASIC)
+  status               String    @default("ACTIVE")
+  currentPeriodEnd     DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(AGENT)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks     Task[]
+  notes     Note[]
+  deals     Deal[]
+}
+
+model PipelineStage {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customers Customer[]
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  name            String
+  phone           String
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  pipelineStageId String?
+  pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id], onDelete: SetNull)
+  source          String   @default("WhatsApp")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  notes         Note[]
+  tasks         Task[]
+  deals         Deal[]
+  conversations Conversation[]
+  automationLogs AutomationLog[]
+  aiProfile     CustomerAIProfile?
+
+  @@unique([phone, companyId])
+}
+
+model Lead {
+  id         String   @id @default(cuid())
+  name       String
+  phone      String
+  status     String   @default("NEW")
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Deal {
+  id         String   @id @default(cuid())
+  title      String
+  value      Float
+  status     String   @default("OPEN") // OPEN, WON, LOST
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Note {
+  id         String   @id @default(cuid())
+  content    String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  dueDate     DateTime?
+  isCompleted Boolean  @default(false)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Conversation {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages   Message[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+enum ConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+}
+
+model WhatsAppConnection {
+  id          String   @id @default(cuid())
+  status      ConnectionStatus @default(DISCONNECTED)
+  phoneNumber String?
+  companyId   String   @unique
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  content        String
+  direction      MessageDirection
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  timestamp      DateTime     @default(now())
+}
+
+enum AutomationTrigger {
+  NEW_LEAD
+  TIME_BASED_FOLLOWUP
+  NO_REPLY
+}
+
+model AutomationRule {
+  id              String   @id @default(cuid())
+  name            String
+  trigger         AutomationTrigger
+  condition       String?  
+  messageTemplate String
+  isActive        Boolean  @default(true)
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  logs            AutomationLog[]
+  createdAt       DateTime @default(now())
+}
+
+model AutomationLog {
+  id         String   @id @default(cuid())
+  ruleId     String
+  rule       AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sentAt     DateTime @default(now())
+
+  @@unique([ruleId, customerId])
+}
+
+model CustomerAIProfile {
+  id             String   @id @default(cuid())
+  customerId     String   @unique
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  interestLevel  Int      @default(0)
+  budget         String?
+  summary        String?
+  nextSteps      String?
+  suggestedReply String?
+  updatedAt      DateTime @updatedAt
+}
